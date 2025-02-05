@@ -8,12 +8,22 @@ const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 
 const app = express();
+
+// CORS ayarlarını en üste al
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*'
+}));
+
+// Webhook için raw body parser
+app.use('/webhooks/orders/create', express.raw({type: 'application/json'}));
+
+// Diğer routelar için JSON parser
 app.use(express.json());
 
-// Rate limiter ekle
+// Rate limiter
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 dakika
-  max: 100 // IP başına limit
+  windowMs: 15 * 60 * 1000,
+  max: 100
 });
 
 app.use(limiter);
@@ -58,25 +68,36 @@ app.post('/sync', async (req, res) => {
 });
 
 // Shopify order webhook
-app.post('/webhooks/orders/create', express.raw({type: 'application/json'}), async (req, res) => {
+app.post('/webhooks/orders/create', async (req, res) => {
+  console.log('🔔 Webhook received:', {
+    headers: req.headers,
+    body: req.body.toString()
+  });
+  
   try {
-    // Shopify webhook imzasını doğrula
     const hmac = req.headers['x-shopify-hmac-sha256'];
+    const body = req.body; // Buffer olarak gelecek
+    
     const hash = crypto
       .createHmac('sha256', process.env.SHOPIFY_WEBHOOK_SECRET)
-      .update(req.body)
+      .update(body)
       .digest('base64');
 
     if (hash !== hmac) {
-      return res.status(401).send('Invalid webhook signature');
+      console.log('❌ Invalid signature:', { received: hmac, calculated: hash });
+      return res.status(401).send('Invalid signature');
     }
 
-    const order = JSON.parse(req.body);
+    const order = JSON.parse(body);
+    console.log('📦 Processing order:', order.id);
+
     await shopifyWebhookHandler.handleOrderCreated(order);
+    console.log('✅ Order processed successfully');
+    
     res.status(200).send('OK');
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).send('Internal server error');
+    console.log('❌ Error:', error);
+    res.status(500).send(error.message);
   }
 });
 
@@ -102,6 +123,7 @@ app.get('/orders/recent', async (req, res) => {
 
 // Root endpoint
 app.get('/', (req, res) => {
+  console.log('Root endpoint hit at:', new Date().toISOString());
   res.json({
     message: 'NeteSIM API is running',
     version: '1.0.0',
@@ -114,10 +136,6 @@ app.get('/', (req, res) => {
     }
   });
 });
-
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*'
-}));
 
 const PORT = process.env.PORT || 3000;
 
