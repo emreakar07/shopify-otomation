@@ -16,6 +16,18 @@ class TalkSimOrderService {
       auth: '/api/auth/local',
       purchase: '/api/purchaseb2b'
     };
+
+    // Credentials'ları constructor'da kontrol edelim
+    if (!process.env.TALKSIM_IDENTIFIER || !process.env.TALKSIM_PASSWORD) {
+      throw new Error('TALKSIM_IDENTIFIER or TALKSIM_PASSWORD is not defined');
+    }
+
+    console.log('TalkSim Credentials Check:', {
+      identifier: process.env.TALKSIM_IDENTIFIER,
+      baseURL: this.baseURL,
+      hasPassword: !!process.env.TALKSIM_PASSWORD
+    });
+
     this.headers = {
       'Content-Type': 'application/json'
     };
@@ -34,58 +46,33 @@ class TalkSimOrderService {
   }
 
   async authenticate() {
+    const authUrl = `${this.baseURL}${this.endpoints.auth}`;
+
     try {
-      const authUrl = `${this.baseURL}${this.endpoints.auth}`;
-      
-      console.log('Auth request:', {
+      console.log('Attempting authentication:', {
         url: authUrl,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        data: {
-          identifier: process.env.TALKSIM_IDENTIFIER,
-          password: '********'
-        }
+        identifier: process.env.TALKSIM_IDENTIFIER
       });
 
       const response = await axios.post(authUrl, {
         identifier: process.env.TALKSIM_IDENTIFIER,
         password: process.env.TALKSIM_PASSWORD
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-
-      console.log('Auth response:', {
-        status: response.status,
-        hasJWT: !!response.data?.jwt,
-        data: response.data // JWT hariç diğer bilgiler
       });
 
       if (response.data && response.data.jwt) {
-        console.log('TalkSim auth başarılı');
         this.token = response.data.jwt;
         this.headers.Authorization = `Bearer ${this.token}`;
-        
-        // Token'ın geçerlilik süresini ayarla (örn: 1 saat)
         this.tokenExpireTime = new Date().getTime() + (60 * 60 * 1000);
-        
         return true;
       }
 
-      throw new Error('Authentication failed: Invalid response');
+      throw new Error('Invalid response from auth endpoint');
     } catch (error) {
-      console.error('TalkSim auth hatası:', {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
+      console.error('Auth Error:', {
         url: authUrl,
-        headers: error.response?.headers
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
       });
       throw error;
     }
