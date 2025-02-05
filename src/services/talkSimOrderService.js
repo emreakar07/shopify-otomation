@@ -17,20 +17,51 @@ class TalkSimOrderService {
       purchase: '/api/purchaseb2b'
     };
 
-    // Credentials'ları constructor'da kontrol edelim
+    // Credentials kontrolü
     if (!process.env.TALKSIM_IDENTIFIER || !process.env.TALKSIM_PASSWORD) {
       throw new Error('TALKSIM_IDENTIFIER or TALKSIM_PASSWORD is not defined');
     }
 
-    console.log('TalkSim Credentials Check:', {
-      identifier: process.env.TALKSIM_IDENTIFIER,
+    // Axios instance oluştur
+    this.axiosInstance = axios.create({
       baseURL: this.baseURL,
-      hasPassword: !!process.env.TALKSIM_PASSWORD
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
     });
 
-    this.headers = {
-      'Content-Type': 'application/json'
-    };
+    // Request interceptor
+    this.axiosInstance.interceptors.request.use(config => {
+      console.log('Making request:', {
+        method: config.method,
+        url: config.url,
+        headers: config.headers,
+        data: config.data ? {
+          ...config.data,
+          password: config.data.password ? '********' : undefined
+        } : undefined
+      });
+      return config;
+    });
+
+    // Response interceptor
+    this.axiosInstance.interceptors.response.use(
+      response => response,
+      error => {
+        console.error('Request failed:', {
+          url: error.config?.url,
+          method: error.config?.method,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          headers: error.response?.headers
+        });
+        throw error;
+      }
+    );
+
     this.token = null;
     this.tokenExpireTime = null;
 
@@ -46,33 +77,25 @@ class TalkSimOrderService {
   }
 
   async authenticate() {
-    const authUrl = `${this.baseURL}${this.endpoints.auth}`;
-
     try {
-      console.log('Attempting authentication:', {
-        url: authUrl,
-        identifier: process.env.TALKSIM_IDENTIFIER
-      });
-
-      const response = await axios.post(authUrl, {
+      const response = await this.axiosInstance.post(this.endpoints.auth, {
         identifier: process.env.TALKSIM_IDENTIFIER,
         password: process.env.TALKSIM_PASSWORD
       });
 
       if (response.data && response.data.jwt) {
         this.token = response.data.jwt;
-        this.headers.Authorization = `Bearer ${this.token}`;
+        this.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
         this.tokenExpireTime = new Date().getTime() + (60 * 60 * 1000);
         return true;
       }
 
       throw new Error('Invalid response from auth endpoint');
     } catch (error) {
-      console.error('Auth Error:', {
-        url: authUrl,
+      console.error('Authentication failed:', {
+        message: error.message,
         status: error.response?.status,
-        data: error.response?.data,
-        message: error.message
+        data: error.response?.data
       });
       throw error;
     }
@@ -93,16 +116,12 @@ class TalkSimOrderService {
     await this.checkAndRefreshToken();
 
     try {
-      const response = await axios.post(
-        `${this.baseURL}${this.endpoints.purchase}`,
-        {
-          prepaidpackagetemplateid: packageId,
-          email: customerEmail,
-          customername: customerName || customerEmail.split('@')[0],
-          notifyByEmail: true
-        },
-        { headers: this.headers }
-      );
+      const response = await this.axiosInstance.post(this.endpoints.purchase, {
+        prepaidpackagetemplateid: packageId,
+        email: customerEmail,
+        customername: customerName || customerEmail.split('@')[0],
+        notifyByEmail: true
+      });
 
       if (!response.data || response.data.status?.code !== 0) {
         if (response.status === 401) {
