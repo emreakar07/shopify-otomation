@@ -13,8 +13,8 @@ class TalkSimOrderService {
   constructor() {
     this.baseURL = process.env.APP_URL;
     this.endpoints = {
-      auth: '/auth/local',
-      purchase: '/purchaseb2b'
+      auth: '/api/auth/local',
+      purchase: '/api/purchaseb2b'
     };
     this.headers = {
       'Content-Type': 'application/json'
@@ -37,24 +37,23 @@ class TalkSimOrderService {
     try {
       const authUrl = `${this.baseURL}${this.endpoints.auth}`;
       
-      const authData = {
-        identifier: process.env.TALKSIM_IDENTIFIER,
-        password: process.env.TALKSIM_PASSWORD
-      };
-
       console.log('Auth request:', {
         url: authUrl,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         data: {
-          ...authData,
+          identifier: process.env.TALKSIM_IDENTIFIER,
           password: '********'
         }
       });
 
-      const response = await axios.post(authUrl, authData, {
+      const response = await axios.post(authUrl, {
+        identifier: process.env.TALKSIM_IDENTIFIER,
+        password: process.env.TALKSIM_PASSWORD
+      }, {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
