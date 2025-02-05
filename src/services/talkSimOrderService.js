@@ -12,6 +12,10 @@ class TalkSimError extends Error {
 class TalkSimOrderService {
   constructor() {
     this.baseURL = process.env.APP_URL;
+    this.endpoints = {
+      auth: '/auth/local',
+      purchase: '/purchaseb2b'
+    };
     this.headers = {
       'Content-Type': 'application/json'
     };
@@ -32,15 +36,15 @@ class TalkSimOrderService {
   // Auth token al
   async authenticate() {
     try {
-      console.log('TalkSim auth başlatılıyor...');
-      console.log('Base URL:', this.baseURL);
+      const authUrl = `${this.baseURL}${this.endpoints.auth}`;
+      console.log('Auth URL:', authUrl);
       
       if (!process.env.TALKSIM_IDENTIFIER || !process.env.TALKSIM_PASSWORD) {
         throw new Error('TalkSim credentials not found in environment variables');
       }
 
       console.log('Auth isteği yapılıyor:', {
-        url: `${this.baseURL}/auth/local`,
+        url: authUrl,
         credentials: {
           identifier: process.env.TALKSIM_IDENTIFIER,
           // password'ü güvenlik için maskeliyoruz
@@ -48,18 +52,10 @@ class TalkSimOrderService {
         }
       });
       
-      const response = await axios.post(
-        `${this.baseURL}/auth/local`,
-        {
-          identifier: process.env.TALKSIM_IDENTIFIER,
-          password: process.env.TALKSIM_PASSWORD
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const response = await axios.post(authUrl, {
+        identifier: process.env.TALKSIM_IDENTIFIER,
+        password: process.env.TALKSIM_PASSWORD
+      });
 
       console.log('Auth response:', {
         status: response.status,
@@ -84,7 +80,7 @@ class TalkSimOrderService {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
-        url: `${this.baseURL}/auth/local`,
+        url: `${this.baseURL}${this.endpoints.auth}`,
         headers: error.response?.headers
       });
       throw error;
@@ -107,7 +103,7 @@ class TalkSimOrderService {
 
     try {
       const response = await axios.post(
-        `${this.baseURL}/purchaseb2b`,
+        `${this.baseURL}${this.endpoints.purchase}`,
         {
           prepaidpackagetemplateid: packageId,
           email: customerEmail,

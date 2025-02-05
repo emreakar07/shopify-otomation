@@ -3,10 +3,10 @@ require('dotenv').config();
 
 class EsimService {
   constructor() {
-    if (!process.env.API_BASE_URL) {
-      throw new Error('API_BASE_URL is not defined in environment variables');
+    if (!process.env.APP_URL) {
+      throw new Error('APP_URL is not defined in environment variables');
     }
-    this.baseURL = process.env.API_BASE_URL;
+    this.baseURL = process.env.APP_URL;
   }
 
   async getPackages() {
