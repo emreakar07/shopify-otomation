@@ -13,8 +13,8 @@ class TalkSimOrderService {
   constructor() {
     this.baseURL = process.env.APP_URL;
     this.endpoints = {
-      auth: '/auth/local',
-      purchase: '/purchaseb2b'
+      auth: '/api/auth/local',
+      purchase: '/api/purchaseb2b'
     };
     this.headers = {
       'Content-Type': 'application/json'
