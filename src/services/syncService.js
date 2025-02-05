@@ -130,18 +130,24 @@ class SyncService {
         }
       }
 
-      // Yeni ve güncellenecek paketleri işle
-      const batchSize = 50;
+      // Daha küçük batch'ler halinde işle
+      const batchSize = 5;
       for (let i = 0; i < packagesToUpdate.length; i += batchSize) {
         const batch = packagesToUpdate.slice(i, i + batchSize);
         console.log(`${i + 1} - ${i + batch.length} arası paketler işleniyor...`);
         
-        const batchResult = await shopifyService.createBulkProducts(batch);
-        results.success.push(...batchResult.success);
-        results.errors.push(...batchResult.errors);
+        try {
+          const batchResult = await shopifyService.createBulkProducts(batch);
+          results.success.push(...batchResult.success);
+          results.errors.push(...batchResult.errors);
 
-        if (i + batchSize < packagesToUpdate.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Her batch arasında 2 saniye bekle
+          if (i + batchSize < packagesToUpdate.length) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (error) {
+          console.error(`Batch ${i}-${i+batchSize} error:`, error);
+          results.errors.push(error);
         }
       }
 

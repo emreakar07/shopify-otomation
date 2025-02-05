@@ -19,9 +19,24 @@ class ShopifyService {
       ...this.headers,
       'X-Shopify-Access-Token': 'shpat_****'
     });
+
+    // Rate limiting için değişkenler
+    this.lastRequestTime = 0;
+    this.minRequestInterval = 500; // 500ms minimum bekleme süresi
+  }
+
+  // Rate limiting helper fonksiyonu
+  async throttleRequest() {
+    const now = Date.now();
+    const timeToWait = Math.max(0, this.minRequestInterval - (now - this.lastRequestTime));
+    if (timeToWait > 0) {
+      await new Promise(resolve => setTimeout(resolve, timeToWait));
+    }
+    this.lastRequestTime = Date.now();
   }
 
   async createProduct(packageData) {
+    await this.throttleRequest(); // Her istekten önce bekle
     try {
       const countryName = packageData.userUiName ? packageData.userUiName.replace('_LZ', '') : 'Unknown';
       const dataGB = packageData.databyte ? (packageData.databyte / (1024 * 1024 * 1024)).toFixed(2) : '0';
@@ -66,6 +81,11 @@ class ShopifyService {
 
       return response.data.product;
     } catch (error) {
+      if (error.response?.status === 429 || error.response?.status === 500) {
+        // Rate limit aşıldıysa veya 500 hatası aldıysak bekle ve tekrar dene
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return this.createProduct(packageData);
+      }
       console.error('Error creating product:', error.response?.data || error.message);
       throw error;
     }
@@ -73,26 +93,28 @@ class ShopifyService {
 
   async createBulkProducts(packages) {
     try {
+      // Daha küçük batch'ler halinde işle
+      const batchSize = 5; // Batch boyutunu küçült
       const results = [];
       const errors = [];
 
-      // Paketleri ülkeye göre grupla
-      const groupedPackages = packages.reduce((acc, pkg) => {
-        const country = pkg.userUiName ? pkg.userUiName.replace('_LZ', '') : 'Unknown';
-        if (!acc[country]) {
-          acc[country] = [];
+      for (let i = 0; i < packages.length; i += batchSize) {
+        const batch = packages.slice(i, i + batchSize);
+        
+        // Her batch arasında bekle
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
-        acc[country].push(pkg);
-        return acc;
-      }, {});
 
-      // Her ülke için tek ürün oluştur
-      for (const [country, countryPackages] of Object.entries(groupedPackages)) {
-        try {
-          // Varyantları oluştur
-          const variants = countryPackages.map(pkg => {
+        for (const pkg of batch) {
+          try {
+            await this.throttleRequest();
+            const country = pkg.userUiName ? pkg.userUiName.replace('_LZ', '') : 'Unknown';
             const dataGB = pkg.databyte ? (pkg.databyte / (1024 * 1024 * 1024)).toFixed(2) : '0';
-            return {
+            const sponsorName = pkg.sponsors?.sponsorname || 'Unknown';
+
+            // Varyantları oluştur
+            const variants = [{
               option1: `${dataGB}GB / ${pkg.perioddays} Days`,
               price: pkg.cost || 0,
               sku: `ESIM-${pkg.prepaidpackagetemplateid}`,
@@ -100,66 +122,58 @@ class ShopifyService {
               inventory_policy: 'continue',
               inventory_quantity: 999,
               requires_shipping: false
-            };
-          });
+            }];
 
-          // Sponsor bilgisini al (hepsi aynı sponsor olmalı)
-          const sponsorName = countryPackages[0].sponsors?.sponsorname || 'Unknown';
+            // Ürünü oluştur
+            const response = await axios.post(
+              `${this.baseURL}/products.json`,
+              {
+                product: {
+                  title: `${country} eSIM Package`,
+                  body_html: `
+                    <strong>Ülke:</strong> ${country}<br>
+                    <strong>Sponsor:</strong> ${sponsorName}<br>
+                    <p>Farklı data paketleri için seçenekleri kontrol edin.</p>
+                  `,
+                  vendor: sponsorName,
+                  product_type: 'eSIM',
+                  status: 'active',
+                  options: [
+                    {
+                      name: "Data Package",
+                      values: variants.map(v => v.option1)
+                    }
+                  ],
+                  variants: variants,
+                  tags: [
+                    'eSIM',
+                    country,
+                    sponsorName,
+                    'auto-sync'
+                  ]
+                }
+              },
+              { headers: this.headers }
+            );
 
-          // Ürünü oluştur
-          const response = await axios.post(
-            `${this.baseURL}/products.json`,
-            {
-              product: {
-                title: `${country} eSIM Package`,
-                body_html: `
-                  <strong>Ülke:</strong> ${country}<br>
-                  <strong>Sponsor:</strong> ${sponsorName}<br>
-                  <p>Farklı data paketleri için seçenekleri kontrol edin.</p>
-                `,
-                vendor: sponsorName,
-                product_type: 'eSIM',
-                status: 'active',
-                options: [
-                  {
-                    name: "Data Package",
-                    values: variants.map(v => v.option1)
-                  }
-                ],
-                variants: variants,
-                tags: [
-                  'eSIM',
-                  country,
-                  sponsorName,
-                  'auto-sync'
-                ]
-              }
-            },
-            { headers: this.headers }
-          );
+            results.push({
+              country,
+              productId: response.data.product.id,
+              variantCount: variants.length,
+              status: 'success'
+            });
 
-          results.push({
-            country,
-            productId: response.data.product.id,
-            variantCount: variants.length,
-            status: 'success'
-          });
-
-        } catch (error) {
-          errors.push({
-            country,
-            error: error.response?.data || error.message,
-            status: 'error'
-          });
+          } catch (error) {
+            console.error(`Batch ${i}-${i+batchSize} error:`, error);
+            errors.push(error);
+          }
         }
       }
 
       return {
         success: results,
         errors: errors,
-        total: Object.keys(groupedPackages).length,
-        successCount: results.length,
-        errorCount: errors.length
+        total: packages.length
       };
 
     } catch (error) {
