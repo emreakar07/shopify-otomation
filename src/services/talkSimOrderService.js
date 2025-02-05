@@ -99,27 +99,39 @@ class TalkSimOrderService {
   }
 
   // eSIM satın al
-  async purchaseESIM(packageId, customerEmail, customerName = '', retryCount = 0) {
-    await this.checkAndRefreshToken();
-
+  async purchaseESIM(packageId, customerEmail, customerName = '') {
     try {
-      const response = await this.axiosInstance.post(this.endpoints.purchase, {
-        prepaidpackagetemplateid: packageId,
-        email: customerEmail,
-        customername: customerName || customerEmail.split('@')[0],
-        notifyByEmail: true
+      await this.checkAndRefreshToken();
+
+      console.log('Purchasing eSIM:', {
+        packageId,
+        customerEmail,
+        customerName
+      });
+
+      // API'nin beklediği formatta data
+      const requestData = {
+        data: {
+          packageId: packageId.toString(), // String olarak gönder
+          price: 0,
+          dealerId: process.env.TALKSIM_DEALER_ID || "",
+          packageName: "",  // API doldurur
+          status: "",       // API doldurur
+          customerName: customerName || customerEmail.split('@')[0]
+        }
+      };
+
+      console.log('Purchase request:', requestData);
+
+      const response = await this.axiosInstance.post(this.endpoints.purchase, requestData);
+
+      console.log('Purchase response:', {
+        status: response.status,
+        data: response.data
       });
 
       if (!response.data || response.data.status?.code !== 0) {
-        if (response.status === 401) {
-          await this.authenticate();
-          return this.purchaseESIM(packageId, customerEmail, customerName);
-        }
-        throw new TalkSimError(
-          response.data?.status?.message || 'Satın alma işlemi başarısız',
-          response.data?.status?.code,
-          response.data
-        );
+        throw new Error(response.data?.status?.message || 'Purchase failed');
       }
 
       return {
@@ -139,18 +151,12 @@ class TalkSimOrderService {
       };
 
     } catch (error) {
-      if (retryCount < 3 && error.code === 'NETWORK_ERROR') {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-        return this.purchaseESIM(packageId, customerEmail, customerName, retryCount + 1);
-      }
-      console.error('eSIM satın alma hatası:', error.response?.data || error.message);
-      if (error.response?.data?.status) {
-        throw new TalkSimError(
-          error.response.data.status.message,
-          error.response.data.status.code,
-          error.response.data
-        );
-      }
+      console.error('Purchase error:', {
+        message: error.message,
+        response: error.response?.data,
+        packageId,
+        customerEmail
+      });
       throw error;
     }
   }

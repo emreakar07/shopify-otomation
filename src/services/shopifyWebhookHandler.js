@@ -11,8 +11,21 @@ class ShopifyWebhookHandler {
 
   async handleOrderCreated(order) {
     try {
+      console.log('Processing order:', {
+        id: order.id,
+        items: order.line_items?.length
+      });
+
       for (const item of order.line_items) {
-        const packageId = item.sku.replace('ESIM-', '');
+        // SKU formatı: ESIM-131519
+        const packageId = item.sku?.replace('ESIM-', '');
+        
+        console.log('Processing line item:', {
+          sku: item.sku,
+          packageId,
+          title: item.title
+        });
+
         const customerName = order.customer?.first_name 
           ? `${order.customer.first_name} ${order.customer.last_name}`
           : '';
@@ -81,7 +94,7 @@ class ShopifyWebhookHandler {
 
       return { success: true };
     } catch (error) {
-      console.error(`Order ${order.id} processing failed:`, error);
+      console.error('Order processing error:', error);
       throw error;
     }
   }
