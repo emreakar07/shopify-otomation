@@ -39,19 +39,32 @@ class TalkSimOrderService {
         throw new Error('TalkSim credentials not found in environment variables');
       }
 
-      console.log('Credentials mevcut, auth isteği yapılıyor...');
+      console.log('Auth isteği yapılıyor:', {
+        url: `${this.baseURL}/auth/local`,
+        credentials: {
+          identifier: process.env.TALKSIM_IDENTIFIER,
+          // password'ü güvenlik için maskeliyoruz
+          password: '********'
+        }
+      });
       
       const response = await axios.post(
         `${this.baseURL}/auth/local`,
         {
           identifier: process.env.TALKSIM_IDENTIFIER,
           password: process.env.TALKSIM_PASSWORD
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
         }
       );
 
       console.log('Auth response:', {
         status: response.status,
-        hasJWT: !!response.data?.jwt
+        hasJWT: !!response.data?.jwt,
+        data: response.data // JWT hariç diğer bilgiler
       });
 
       if (response.data && response.data.jwt) {
@@ -70,7 +83,9 @@ class TalkSimOrderService {
       console.error('TalkSim auth hatası:', {
         message: error.message,
         response: error.response?.data,
-        status: error.response?.status
+        status: error.response?.status,
+        url: `${this.baseURL}/auth/local`,
+        headers: error.response?.headers
       });
       throw error;
     }
