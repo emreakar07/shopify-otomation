@@ -19,44 +19,25 @@ class TalkSimOrderService {
 
     // Credentials kontrolü
     if (!process.env.TALKSIM_IDENTIFIER || !process.env.TALKSIM_PASSWORD) {
-      throw new Error('TALKSIM_IDENTIFIER or TALKSIM_PASSWORD is not defined');
+      throw new Error('TalkSim credentials not found');
     }
 
-    // Axios instance oluştur
+    // Basit axios instance
     this.axiosInstance = axios.create({
       baseURL: this.baseURL,
-      timeout: 10000,
       headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Content-Type': 'application/json'
       }
     });
 
-    // Request interceptor
-    this.axiosInstance.interceptors.request.use(config => {
-      console.log('Making request:', {
-        method: config.method,
-        url: config.url,
-        headers: config.headers,
-        data: config.data ? {
-          ...config.data,
-          password: config.data.password ? '********' : undefined
-        } : undefined
-      });
-      return config;
-    });
-
-    // Response interceptor
+    // Sadece hataları logla
     this.axiosInstance.interceptors.response.use(
       response => response,
       error => {
-        console.error('Request failed:', {
-          url: error.config?.url,
-          method: error.config?.method,
+        console.error('API Error:', {
+          endpoint: error.config?.url,
           status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data,
-          headers: error.response?.headers
+          data: error.response?.data
         });
         throw error;
       }
@@ -78,25 +59,22 @@ class TalkSimOrderService {
 
   async authenticate() {
     try {
-      const response = await this.axiosInstance.post(this.endpoints.auth, {
+      // Basit auth isteği
+      const response = await this.axiosInstance.post('/auth/local', {
         identifier: process.env.TALKSIM_IDENTIFIER,
         password: process.env.TALKSIM_PASSWORD
       });
 
-      if (response.data && response.data.jwt) {
+      if (response.data?.jwt) {
         this.token = response.data.jwt;
-        this.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+        this.axiosInstance.defaults.headers['Authorization'] = `Bearer ${this.token}`;
         this.tokenExpireTime = new Date().getTime() + (60 * 60 * 1000);
         return true;
       }
 
-      throw new Error('Invalid response from auth endpoint');
+      throw new Error('No JWT in response');
     } catch (error) {
-      console.error('Authentication failed:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data
-      });
+      console.error('Auth failed:', error.response?.data || error.message);
       throw error;
     }
   }
