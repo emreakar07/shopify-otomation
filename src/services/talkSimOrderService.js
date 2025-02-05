@@ -33,12 +33,10 @@ class TalkSimOrderService {
     });
   }
 
-  // Auth token al
   async authenticate() {
     try {
       const authUrl = `${this.baseURL}${this.endpoints.auth}`;
       
-      // Request body'yi kontrol edelim
       const authData = {
         identifier: process.env.TALKSIM_IDENTIFIER,
         password: process.env.TALKSIM_PASSWORD
@@ -52,7 +50,7 @@ class TalkSimOrderService {
         },
         data: {
           ...authData,
-          password: '********' // Log'da şifreyi maskeliyoruz
+          password: '********'
         }
       });
 
