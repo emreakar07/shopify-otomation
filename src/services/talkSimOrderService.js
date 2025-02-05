@@ -13,8 +13,8 @@ class TalkSimOrderService {
   constructor() {
     this.baseURL = process.env.APP_URL;
     this.endpoints = {
-      auth: '/api/auth/local',
-      purchase: '/api/purchaseb2b'
+      auth: '/auth/local',
+      purchase: '/purchaseb2b'
     };
     this.headers = {
       'Content-Type': 'application/json'
@@ -37,24 +37,30 @@ class TalkSimOrderService {
   async authenticate() {
     try {
       const authUrl = `${this.baseURL}${this.endpoints.auth}`;
-      console.log('Auth URL:', authUrl);
       
-      if (!process.env.TALKSIM_IDENTIFIER || !process.env.TALKSIM_PASSWORD) {
-        throw new Error('TalkSim credentials not found in environment variables');
-      }
-
-      console.log('Auth isteği yapılıyor:', {
-        url: authUrl,
-        credentials: {
-          identifier: process.env.TALKSIM_IDENTIFIER,
-          // password'ü güvenlik için maskeliyoruz
-          password: '********'
-        }
-      });
-      
-      const response = await axios.post(authUrl, {
+      // Request body'yi kontrol edelim
+      const authData = {
         identifier: process.env.TALKSIM_IDENTIFIER,
         password: process.env.TALKSIM_PASSWORD
+      };
+
+      console.log('Auth request:', {
+        url: authUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        data: {
+          ...authData,
+          password: '********' // Log'da şifreyi maskeliyoruz
+        }
+      });
+
+      const response = await axios.post(authUrl, authData, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
       });
 
       console.log('Auth response:', {
@@ -78,9 +84,10 @@ class TalkSimOrderService {
     } catch (error) {
       console.error('TalkSim auth hatası:', {
         message: error.message,
-        response: error.response?.data,
         status: error.response?.status,
-        url: `${this.baseURL}${this.endpoints.auth}`,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: authUrl,
         headers: error.response?.headers
       });
       throw error;
