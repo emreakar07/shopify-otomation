@@ -22,26 +22,25 @@ class TalkSimOrderService {
       throw new Error('TalkSim credentials not found');
     }
 
-    // Basit axios instance
+    // Axios instance
     this.axiosInstance = axios.create({
       baseURL: this.baseURL,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       }
     });
 
-    // Sadece hataları logla
-    this.axiosInstance.interceptors.response.use(
-      response => response,
-      error => {
-        console.error('API Error:', {
-          endpoint: error.config?.url,
-          status: error.response?.status,
-          data: error.response?.data
-        });
-        throw error;
-      }
-    );
+    // Debug için request interceptor
+    this.axiosInstance.interceptors.request.use(config => {
+      console.log('Request:', {
+        method: config.method?.toUpperCase(),
+        url: `${config.baseURL}${config.url}`,
+        headers: config.headers,
+        data: config.data
+      });
+      return config;
+    });
 
     this.token = null;
     this.tokenExpireTime = null;
@@ -59,10 +58,15 @@ class TalkSimOrderService {
 
   async authenticate() {
     try {
-      // Basit auth isteği
-      const response = await this.axiosInstance.post('/auth/local', {
+      // Auth endpoint'ini tam URL ile kullanalım
+      const response = await this.axiosInstance.post(this.endpoints.auth, {
         identifier: process.env.TALKSIM_IDENTIFIER,
         password: process.env.TALKSIM_PASSWORD
+      });
+
+      console.log('Auth response:', {
+        status: response.status,
+        data: response.data
       });
 
       if (response.data?.jwt) {
@@ -74,7 +78,12 @@ class TalkSimOrderService {
 
       throw new Error('No JWT in response');
     } catch (error) {
-      console.error('Auth failed:', error.response?.data || error.message);
+      console.error('Auth failed:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        url: `${this.baseURL}${this.endpoints.auth}`
+      });
       throw error;
     }
   }
