@@ -33,11 +33,14 @@ class TalkSimOrderService {
   async authenticate() {
     try {
       console.log('TalkSim auth başlatılıyor...');
+      console.log('Base URL:', this.baseURL);
       
       if (!process.env.TALKSIM_IDENTIFIER || !process.env.TALKSIM_PASSWORD) {
         throw new Error('TalkSim credentials not found in environment variables');
       }
 
+      console.log('Credentials mevcut, auth isteği yapılıyor...');
+      
       const response = await axios.post(
         `${this.baseURL}/auth/local`,
         {
@@ -45,6 +48,11 @@ class TalkSimOrderService {
           password: process.env.TALKSIM_PASSWORD
         }
       );
+
+      console.log('Auth response:', {
+        status: response.status,
+        hasJWT: !!response.data?.jwt
+      });
 
       if (response.data && response.data.jwt) {
         console.log('TalkSim auth başarılı');
@@ -59,8 +67,12 @@ class TalkSimOrderService {
 
       throw new Error('Authentication failed: Invalid response');
     } catch (error) {
-      console.error('TalkSim auth hatası:', error.response?.data || error.message);
-      throw new Error('Authentication failed');
+      console.error('TalkSim auth hatası:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      throw error;
     }
   }
 

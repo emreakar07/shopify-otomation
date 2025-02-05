@@ -100,6 +100,21 @@ app.get('/orders/recent', async (req, res) => {
   }
 });
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'NeteSIM API is running',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      sync: '/sync',
+      webhook: '/webhooks/orders/create',
+      orderStatus: '/orders/:orderId/status',
+      recentOrders: '/orders/recent'
+    }
+  });
+});
+
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || '*'
 }));
