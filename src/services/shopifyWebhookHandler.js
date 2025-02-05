@@ -16,6 +16,19 @@ class ShopifyWebhookHandler {
         items: order.line_items?.length
       });
 
+      // Önce bu sipariş daha önce işlenmiş mi kontrol et
+      const { data: existingOrder } = await this.supabase
+        .from('orders')
+        .select('*')
+        .eq('shopify_order_id', order.id)
+        .eq('status', 'completed')
+        .maybeSingle();
+
+      if (existingOrder) {
+        console.log('Order already processed:', order.id);
+        return { success: true, alreadyProcessed: true };
+      }
+
       for (const item of order.line_items) {
         // SKU formatı: ESIM-131519
         const packageId = item.sku?.replace('ESIM-', '');
@@ -26,18 +39,30 @@ class ShopifyWebhookHandler {
           title: item.title
         });
 
-        const customerName = order.customer?.first_name 
-          ? `${order.customer.first_name} ${order.customer.last_name}`
-          : '';
+        // Önce bu line item için pending veya completed kayıt var mı kontrol et
+        const { data: existingItem } = await this.supabase
+          .from('orders')
+          .select('*')
+          .eq('shopify_order_id', order.id)
+          .eq('package_id', packageId)
+          .not('status', 'eq', 'error')
+          .maybeSingle();
 
-        // Önce pending durumunda kayıt oluştur
+        if (existingItem) {
+          console.log('Line item already processed:', packageId);
+          continue;
+        }
+
+        // Yeni kayıt oluştur
         const { data: orderRecord, error: insertError } = await this.supabase
           .from('orders')
           .insert([{
             shopify_order_id: order.id,
             package_id: packageId,
             customer_email: order.email,
-            customer_name: customerName,
+            customer_name: order.customer?.first_name 
+              ? `${order.customer.first_name} ${order.customer.last_name}`
+              : '',
             status: 'pending',
             created_at: new Date().toISOString()
           }])
@@ -45,17 +70,16 @@ class ShopifyWebhookHandler {
           .single();
 
         if (insertError) throw insertError;
-        
+
         try {
-          // TalkSim'den satın al
           const purchaseResult = await talkSimOrderService.purchaseESIM(
             packageId,
             order.email,
-            customerName
+            orderRecord.customer_name
           );
 
-          // Başarılı satın alma durumunda kaydı güncelle
-          const { error: updateError } = await this.supabase
+          // Başarılı satın alma durumunda güncelle
+          await this.supabase
             .from('orders')
             .update({
               status: 'completed',
@@ -64,8 +88,6 @@ class ShopifyWebhookHandler {
               updated_at: new Date().toISOString()
             })
             .eq('id', orderRecord.id);
-
-          if (updateError) throw updateError;
 
           // Mail gönder
           await talkSimOrderService.sendESIMEmail(
@@ -78,7 +100,12 @@ class ShopifyWebhookHandler {
           );
 
         } catch (error) {
-          // Hata durumunda kaydı güncelle
+          console.error('Purchase failed:', {
+            orderId: order.id,
+            packageId,
+            error: error.message
+          });
+
           await this.supabase
             .from('orders')
             .update({
